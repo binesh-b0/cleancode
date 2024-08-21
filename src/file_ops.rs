@@ -12,6 +12,7 @@ pub fn get_files_in_directory(
     dir: &Path,
     extensions: Option<&str>,
     recursive: bool,
+    exclude_paths: &[PathBuf], 
 ) -> io::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
     let entries = fs::read_dir(dir)?;
@@ -20,8 +21,12 @@ pub fn get_files_in_directory(
         let entry = entry?;
         let path = entry.path();
 
+        if exclude_paths.iter().any(|p| path.starts_with(p)) {
+            continue;
+        }
+
         if path.is_dir() && recursive {
-            files.extend(get_files_in_directory(&path, extensions, recursive)?);
+            files.extend(get_files_in_directory(&path, extensions, recursive, exclude_paths)?);
         } else if let Some(ext) = path.extension() {
             if let Some(exts) = extensions {
                 if exts.split(',').any(|e| e == ext.to_str().unwrap_or("")) {

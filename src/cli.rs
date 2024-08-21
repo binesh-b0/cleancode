@@ -1,4 +1,5 @@
 use clap::{Arg, Command};
+use std::path::PathBuf;
 
 pub fn build_cli() -> Command {
     Command::new("CleanCode")
@@ -25,6 +26,12 @@ pub fn build_cli() -> Command {
             .long("extensions")
             .num_args(1)
             .help("File extensions to target, e.g., 'js,py'"))
+        .arg(Arg::new("exclude")
+            .long("exclude")
+            .short('x')
+            .num_args(1..)
+            .value_parser(clap::value_parser!(PathBuf))
+            .help("Exclude specific files or directories"))
         .arg(Arg::new("remove")
             .long("remove")
             .num_args(0)
@@ -33,10 +40,18 @@ pub fn build_cli() -> Command {
             .short('v')
             .long("verbose")
             .num_args(0)
-            .help("Show dtailed logs during processing"))
+            .help("Show detailed logs during processing"))
         .arg(Arg::new("dry_run")
             .short('n')
             .long("dry-run")
             .num_args(0)
             .help("Simulate the operation without making any changes"))
+}
+
+pub fn default_exclusions() -> Vec<PathBuf> {
+    vec![
+        PathBuf::from("node_modules"),
+        PathBuf::from("target"),
+        PathBuf::from("vendor"),
+    ]
 }
