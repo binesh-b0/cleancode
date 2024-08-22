@@ -6,9 +6,9 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
-use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
+use indicatif::{ProgressBar, ProgressStyle};
 use cli::{build_cli, default_exclusions};
-use file_ops::get_files_in_directory;
+use file_ops::{get_files_in_directory,create_backup,undo_removal,handle_update_for_file};
 use parser::{remove_debug_statements, extract_imports};
 use colored::Colorize;
 
@@ -20,10 +20,16 @@ fn main() {
     let dry_run = matches.get_flag("dry_run");
     let verbose = matches.get_flag("verbose");
     let recursive = matches.get_flag("recursive");
+    let update = matches.get_flag("update");
+    let force = matches.get_flag("force");
 
     // Check that both directory and file are not provided simultaneously
     if matches.get_one::<String>("file").is_some() && matches.get_one::<String>("directory").is_some() {
         eprintln!("{}", "Error: You cannot specify both a file and a directory at the same time.".red().bold());
+        return;
+    }
+    if matches.get_one::<String>("file").is_some() && recursive && matches.get_one::<String>("update").is_some(){
+        eprintln!("{}", "Error: Recursively updating file is not available, try --directory .".red().bold());
         return;
     }
 
@@ -46,6 +52,30 @@ fn main() {
         );
     spinner.enable_steady_tick(100); // Tick every 100ms
     spinner.set_message("Starting process...");
+
+    if update {
+        if let Some(file) = matches.get_one::<String>("file") {
+            let path = Path::new(file);
+            handle_update_for_file(path, force, dry_run, Some(&spinner));
+        }
+
+        if let Some(directory) = matches.get_one::<String>("directory") {
+            let path = Path::new(directory);
+            if let Ok(files) = get_files_in_directory(path, Some("bak"), recursive, &exclude_paths) {
+                spinner.set_length(files.len() as u64);
+                for file in files {
+                    undo_removal(&file, force, dry_run, Some(&spinner)).unwrap_or_else(|err| {
+                        spinner.println(format!("Failed to restore file: {}: {}", file.display(), err));
+                    });
+                    spinner.inc(1);
+                }
+                spinner.finish_with_message("Update complete".bright_green().bold().to_string());
+            } else {
+                eprintln!("Failed to read directory: {}", directory.red().bold());
+            }
+        }
+        return;
+    }
 
     // Process a single file if specified
     if let Some(file) = matches.get_one::<String>("file") {
@@ -136,7 +166,6 @@ fn process_file(
     // Check if the file has already been processed
     if !processed_files.insert(path.to_path_buf()) {
         if verbose {
-            // Clear the spinner, print the message, and restart the spinner
             if let Some(spinner) = pb {
                 spinner.println(format!(
                     "File already processed: {}",
@@ -149,7 +178,6 @@ fn process_file(
         return;
     }
 
-    // Create a spinner if one isn't passed in
     let spinner: Box<ProgressBar> = pb.map(|p| Box::new(p.clone())).unwrap_or_else(|| {
         let sp = ProgressBar::new_spinner();
         sp.set_style(
@@ -164,16 +192,13 @@ fn process_file(
     if let Some(extension) = path.extension().and_then(|e| e.to_str()) {
         spinner.set_message(format!("Processing file: {}", path.display()));
 
-        // Read the file content
         if let Ok(content) = fs::read_to_string(path) {
-            // Remove debug statements from the content
             let cleaned_content = remove_debug_statements(&content, extension);
             let removed_statements = content.lines().count() - cleaned_content.lines().count();
 
             *total_files_processed += 1;
             *total_statements_removed += removed_statements;
 
-            // Print verbose message above the spinner
             if verbose {
                 spinner.println(format!(
                     "{} - {}",
@@ -183,7 +208,6 @@ fn process_file(
             }
 
             if dry_run {
-                // Continue to process imports even in dry run mode
                 if recursive && (extension == "js" || extension == "py" || extension == "ts") {
                     let imports = extract_imports(&content, path.parent().unwrap_or(Path::new("")), extension);
 
@@ -196,18 +220,12 @@ fn process_file(
                             recursive, 
                             total_files_processed, 
                             total_statements_removed,
-                            Some(&spinner)  // Pass the spinner reference to recursive calls
+                            Some(&spinner)
                         );
                     }
                 }
             } else {
-                // Create a backup and write the cleaned content to the file
-                let backup_path = path.with_extension("bak");
-                if let Err(e) = fs::write(&backup_path, &content) {
-                    spinner.println(format!("Failed to create backup file: {}", e));
-                    spinner.finish_and_clear();
-                    return;
-                }
+                create_backup(&content, path, Some(&spinner)).unwrap();  // Create the backup with spinner
 
                 if let Err(e) = fs::write(path, cleaned_content) {
                     spinner.println(format!("Failed to write cleaned content to file: {}", e));
@@ -215,7 +233,6 @@ fn process_file(
                     return;
                 }
 
-                // Process imports as usual if recursive flag is set
                 if recursive && (extension == "js" || extension == "py" || extension == "ts") {
                     let imports = extract_imports(&content, path.parent().unwrap_or(Path::new("")), extension);
 
@@ -228,26 +245,26 @@ fn process_file(
                             recursive, 
                             total_files_processed, 
                             total_statements_removed,
-                            Some(&spinner)  // Pass the spinner reference to recursive calls
+                            Some(&spinner)
                         );
                     }
                 }
             }
 
             if pb.is_none() {
-                spinner.finish_and_clear(); // Finish the spinner only if it was created locally
+                spinner.finish_and_clear();
             }
         } else {
             spinner.println(format!("Failed to read file: {}", path.display().to_string().red()));
             if pb.is_none() {
-                spinner.finish_and_clear(); // Finish the spinner only if it was created locally
+                spinner.finish_and_clear();
             }
             return;
         }
     } else {
         spinner.println(format!("Skipping file with no extension: {}", path.display().to_string().red()));
         if pb.is_none() {
-            spinner.finish_and_clear(); // Finish the spinner only if it was created locally
+            spinner.finish_and_clear();
         }
         return;
     }
