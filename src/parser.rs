@@ -9,6 +9,7 @@ pub fn remove_debug_statements(content: &str, file_extension: &str) -> String {
 
     let pattern = match file_extension {
         "js" => &js_pattern,
+        "ts" => &js_pattern,
         "py" => &py_pattern,
         _ => return content.to_string(),
     };

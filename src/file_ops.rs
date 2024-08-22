@@ -1,12 +1,12 @@
-use std::fs::{self, File};
-use std::io::{self, BufRead};
+use std::fs::{self};
+use std::io::{self};
 use std::path::{Path, PathBuf};
 
-pub fn read_file_lines(path: &Path) -> io::Result<Vec<String>> {
-    let file = File::open(path)?;
-    let reader = io::BufReader::new(file);
-    reader.lines().collect()
-}
+// pub fn read_file_lines(path: &Path) -> io::Result<Vec<String>> {
+//     let file = File::open(path)?;
+//     let reader = io::BufReader::new(file);
+//     reader.lines().collect()
+// }
 
 pub fn get_files_in_directory(
     dir: &Path,
