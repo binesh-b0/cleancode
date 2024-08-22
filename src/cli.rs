@@ -4,7 +4,7 @@ use std::path::PathBuf;
 pub fn build_cli() -> Command {
     Command::new("CleanCode")
         .version("0.1.0")
-        .author("Your Name <your.email@example.com>")
+        .author("binesh-b0")
         .about("CLI tool to remove debug/console statements from code files")
         .arg(Arg::new("file")
             .short('f')
