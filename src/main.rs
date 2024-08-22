@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
-use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
+use indicatif::{ProgressBar, ProgressStyle};
 use cli::{build_cli, default_exclusions};
 use file_ops::get_files_in_directory;
 use parser::{remove_debug_statements, extract_imports};
