@@ -1,16 +1,19 @@
 mod cli;
 mod file_ops;
 mod parser;
+mod publish;
 
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 use indicatif::{ProgressBar, ProgressStyle};
+use colored::Colorize;
+
 use cli::{build_cli, default_exclusions};
 use file_ops::{get_files_in_directory,create_backup,undo_removal,handle_update_for_file};
-use parser::{remove_debug_statements, extract_imports};
-use colored::Colorize;
+use parser::{remove_debug_statements, extract_imports,calculate_stats};
+use publish::{print_stats_summary};
 
 fn main() {
     let matches = build_cli().get_matches();
@@ -22,6 +25,7 @@ fn main() {
     let recursive = matches.get_flag("recursive");
     let update = matches.get_flag("update");
     let force = matches.get_flag("force");
+    let stats = matches.get_flag("stats");
 
     // Check that both directory and file are not provided simultaneously
     if matches.get_one::<String>("file").is_some() && matches.get_one::<String>("directory").is_some() {
@@ -52,6 +56,45 @@ fn main() {
         );
     spinner.enable_steady_tick(100); // Tick every 100ms
     spinner.set_message("Starting process...");
+
+    let mut stats_summary = Vec::new();  // To store stats for each file
+
+    if stats {
+        
+        if verbose{
+            spinner.println("File: Total Lines|Code Lines|Debug|Brace Lines|Comma Lines|Semicolon Lines");
+        } 
+        if let Some(file) = matches.get_one::<String>("file") {
+            let file_stats = calculate_stats(Path::new(file), Some(&spinner),verbose);
+            stats_summary.push((file.to_string(), file_stats));
+        }
+
+        if let Some(directory) = matches.get_one::<String>("directory") {
+            let path = Path::new(directory);
+            if let Ok(files) = get_files_in_directory(path, None, recursive, &exclude_paths) {
+                spinner.set_length(files.len() as u64);
+                for file in files {
+                    let file_stats = calculate_stats(&file, Some(&spinner),verbose);
+                    stats_summary.push((file.display().to_string(), file_stats));
+                    spinner.inc(1);
+                }
+                spinner.finish_with_message("Statistics collection complete".bright_green().bold().to_string());
+            } else {
+                eprintln!("Failed to read directory: {}", directory.red().bold());
+            }
+        }
+        spinner.finish_with_message("Analysis complete".bright_green().bold().to_string());
+        // Print the summary table after all files have been processed
+        print_stats_summary(stats_summary);
+        let duration = start_time.elapsed();
+        println!(
+            "Time taken: {}",
+            format!("{:.2?}", duration).cyan().bold()
+        );
+        return;
+    }
+
+
 
     if update {
         if let Some(file) = matches.get_one::<String>("file") {
@@ -183,8 +226,8 @@ fn process_file(
         sp.set_style(
             ProgressStyle::default_spinner()
                 .template("{spinner:.green} {msg}")
-                .tick_chars("/|\\- ")
-        );
+                .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+            );
         sp.enable_steady_tick(100);
         Box::new(sp)
     });
